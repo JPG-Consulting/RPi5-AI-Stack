@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi AI Stack (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pi-ai-stack/backend
+ExecStart=/opt/pi-ai-stack/backend/.venv/bin/uvicorn ai_api.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

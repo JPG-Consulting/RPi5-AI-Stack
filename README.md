@@ -1,23 +1,15 @@
-# Pi AI Stack
+# Pi AI Stack – Backend Code Skeleton
 
-Pi AI Stack is a **local-first AI assistant platform** designed to run on a **Raspberry Pi 5 (8 GB RAM)**.
+This directory contains a complete **backend code skeleton** for Pi AI Stack.
 
-It exposes an **OpenAI-compatible API** for chat, speech-to-text, and text-to-speech, while running fully locally by default.
-The system is engineered to **age well** through explicit governance of memory, RAG, retention, and confidence scoring.
+- FastAPI (OpenAI-compatible)
+- SQLite persistence
+- Chat streaming via SSE
+- TTS streaming (PCM/MP3/OPUS in OGG via ffmpeg)
+- STT batch (faster-whisper)
+- RAG (ingest + embeddings + retrieval) – local embeddings via Ollama
+- Facts pipeline (extract + L1 + L2 + persist)
+- GC (TTL + grace + hard limits)
+- Observability (JSON metrics)
 
-The repository is documentation-driven: using only the contents of `docs/`, a human or AI system can recreate the entire project from scratch.
-
-## Highlights
-
-- OpenAI-compatible REST API
-- Local LLM via Ollama (configurable)
-- Whisper STT (batch)
-- Piper TTS (streaming: OPUS / MP3 / PCM)
-- Conversation control (repeat, meta-questions, cancellation)
-- Governed RAG with confidence + time awareness
-- Explicit user facts pipeline (no hallucinated memory)
-- SQLite persistence with GC (TTL + grace)
-- Lightweight JSON observability
-- Optional Web UI (ChatGPT-like)
-
-Start with **docs/README.md**.
+Configure via `config.yaml` at repo root.

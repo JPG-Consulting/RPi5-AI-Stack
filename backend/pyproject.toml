@@ -1,0 +1,9 @@
+[project]
+name = "pi-ai-stack-backend"
+version = "0.1.0"
+description = "Pi AI Stack backend (FastAPI)"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

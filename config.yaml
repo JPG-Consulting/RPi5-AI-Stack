@@ -1,0 +1,72 @@
+llm:
+  provider: ollama
+  ollama:
+    base_url: "http://127.0.0.1:11434"
+    model: "llama3.2:3b"
+    timeout_seconds: 3600
+
+stt:
+  engine: whisper
+  language: es
+  device: cpu
+  compute_type: int8
+  whisper:
+    model: small
+
+tts:
+  engine: piper
+  default_format: opus
+  sample_rate: 22050
+  piper:
+    binary: /usr/bin/piper
+    model: /opt/pi-ai-stack/models/es_ES-voice.onnx
+
+conversation:
+  ttl_hours: 24
+  grace_period_hours: 72
+
+context:
+  last_n_turns: 12
+  max_tokens_soft: 2048
+  max_tokens_hard: 4096
+
+rag:
+  enabled: true
+  embeddings:
+    provider: ollama
+    ollama:
+      base_url: "http://127.0.0.1:11434"
+      model: "nomic-embed-text"
+      timeout_seconds: 120
+  retrieval:
+    top_k: 6
+    min_similarity: 0.25
+  persistence:
+    enabled: true
+    min_confidence: 0.85
+
+facts:
+  enabled: true
+  user_id: "default"
+  min_confidence_persist: 0.85
+  max_facts_in_prompt: 12
+  l2:
+    enabled: true
+    provider: ollama
+    ollama:
+      base_url: "http://127.0.0.1:11434"
+      model: "llama3.2:1b"
+      timeout_seconds: 120
+
+storage:
+  db_path: "/opt/pi-ai-stack/data/conversations.db"
+  max_db_size_mb: 512
+  max_rag_entries: 10000
+
+gc:
+  periodic:
+    enabled: true
+    interval_minutes: 60
+
+observability:
+  enabled: true
