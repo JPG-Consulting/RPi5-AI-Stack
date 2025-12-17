@@ -2,16 +2,9 @@
 
 Welcome to the **Pi AI Stack** documentation.
 
-Pi AI Stack is a **local-first AI assistant platform** designed to run on a **Raspberry Pi 5 (8 GB)**. It provides an **OpenAI-compatible API** for chat, speech-to-text, and text-to-speech, backed by local models (Ollama, Whisper, Piper), with an optional governed RAG system and optional fallback to OpenAI.
+Pi AI Stack is a **local-first AI assistant platform** designed to run on a **Raspberry Pi 5 (8 GB)**. It exposes an **OpenAI-compatible API** for chat, speech-to-text, and text-to-speech, backed by local models (Ollama, Whisper, Piper), with an optional **governed RAG system** and optional fallback to OpenAI.
 
-The project is designed to be:
-
-* local-first and privacy-preserving
-* reproducible and inspectable
-* safe against silent knowledge degradation
-* suitable for long-running, stateful assistants
-
-This documentation set is intentionally complete and explicit. An AI system (e.g. ChatGPT, Claude, Copilot) should be able to **reconstruct the entire project from scratch** using only these documents.
+The project is intentionally designed so that **this documentation is the complete system specification**. Using only the documents in this directory, a human or an AI system (ChatGPT, Claude, Copilot, etc.) should be able to **reconstruct the entire project from scratch**.
 
 ---
 
@@ -22,31 +15,33 @@ At a high level, Pi AI Stack consists of:
 * **Nginx** as the single network entry point
 * **FastAPI** backend exposing an OpenAI-compatible API
 * **Ollama** for local LLM inference (configurable)
-* **Whisper** for Speech-to-Text (local, batch)
-* **Piper** for Text-to-Speech (local, streaming)
-* **Conversation management** with TTL and context compaction
-* **Governed RAG** with confidence, time-awareness, and cleanup
-* **Optional Web UI** with real-time streaming UX
+* **Whisper** for local Speech-to-Text (batch)
+* **Piper** for local Text-to-Speech (real-time streaming)
+* **Conversation management** with TTL, grace period, and context compaction
+* **Governed RAG** with confidence scoring, time awareness, and cleanup
+* **Optional Web UI** with real-time text and audio streaming
+
+The system is local-first, privacy-preserving, and designed to age well over long periods of continuous operation.
 
 ---
 
 ## 📁 Documentation Map
 
-Below is an overview of all documentation files in this directory, in recommended reading order.
+Below is the complete documentation map, in recommended reading order.
 
 ---
 
 ### 1️⃣ ARCHITECTURE.md
 
-**System-wide technical vision and guarantees**.
+**System-wide technical architecture and guarantees**.
 
-Explains:
+Covers:
 
-* overall architecture and data flow
+* end-to-end architecture and data flow
 * request lifecycle (including streaming and cancellation)
 * conversation and context handling
-* RAG, memory, and scoring concepts
-* design guarantees and non-goals
+* RAG, memory, and scoring
+* explicit guarantees and non-goals
 
 ➡️ Start here to understand *how the system works*.
 
@@ -54,13 +49,12 @@ Explains:
 
 ### 2️⃣ INSTALL.md
 
-**End-user installation guide**.
+**Installation and basic operation**.
 
-Explains:
+Covers:
 
-* hardware and software requirements
-* one-command installation
-* reboot-safe installer behavior
+* hardware and OS requirements
+* one-command, reboot-safe installer
 * directory layout
 * backup, restore, and uninstall
 
@@ -72,30 +66,29 @@ Explains:
 
 **Complete reference for `config.yaml`**.
 
-Explains:
+Covers:
 
 * all configuration options
-* defaults and recommended ranges
+* defaults and safe ranges
 * LLM, STT, TTS, RAG, fallback, observability
 
-➡️ Read this to *tune and customize behavior*.
+➡️ Read this to *customize system behavior*.
 
 ---
 
 ### 4️⃣ API_CONSUMPTION.md
 
-**How to consume the API from clients**.
+**How to consume the OpenAI-compatible API**.
 
-Explains:
+Covers:
 
-* OpenAI-compatible chat API
-* streaming chat (SSE)
+* chat completions (streaming and non-streaming)
+* conversation IDs and lifecycle
 * TTS streaming (MP3 / OPUS / PCM)
 * STT behavior
 * cancellation semantics
-* real examples with `curl`
 
-➡️ Read this to *build clients or integrations*.
+➡️ Read this to *build clients and integrations*.
 
 ---
 
@@ -103,10 +96,10 @@ Explains:
 
 **Optional browser-based user interface**.
 
-Explains:
+Covers:
 
 * Web UI architecture
-* streaming UX (text + audio)
+* real-time streaming UX (text + audio)
 * audio interruption semantics
 * limitations and non-goals
 
@@ -116,15 +109,15 @@ Explains:
 
 ### 6️⃣ KNOWLEDGE_POLICIES.md
 
-**Formal policies governing RAG and memory**.
+**Formal knowledge governance policies**.
 
-Explains:
+Covers:
 
 * what counts as knowledge
 * static vs semi-static vs dynamic facts
 * confidence thresholds
 * time validity and expiration
-* rules preventing hallucination contamination
+* hallucination and contamination prevention
 
 ➡️ Critical for *trustworthy long-term behavior*.
 
@@ -134,7 +127,7 @@ Explains:
 
 **Physical data model for RAG storage**.
 
-Explains:
+Covers:
 
 * SQLite schema
 * indices
@@ -145,15 +138,30 @@ Explains:
 
 ---
 
-### 8️⃣ SECURITY.md
+### 8️⃣ RETENTION_AND_GC.md
+
+**Retention and garbage collection policies**.
+
+Covers:
+
+* conversation TTL and grace period
+* message and summary cleanup
+* RAG aging and deletion rules
+* disk protection and hard limits
+* GC execution strategies
+
+➡️ Defines *how the system ages safely over time*.
+
+---
+
+### 9️⃣ SECURITY.md
 
 **Explicit security model and threat boundaries**.
 
-Explains:
+Covers:
 
 * network exposure model
-* absence of auth by default (and why)
-* TLS considerations
+* authentication and TLS assumptions
 * data privacy guarantees
 * what is intentionally out of scope
 
@@ -161,44 +169,42 @@ Explains:
 
 ---
 
-### 9️⃣ OBSERVABILITY.md
+### 🔟 OBSERVABILITY.md
 
 **Metrics and system visibility**.
 
-Explains:
+Covers:
 
 * what is measured (and what is not)
 * latency, cancellations, errors
 * JSON metrics endpoint
-* privacy-preserving observability
 
 ➡️ Read this to *operate and debug the system*.
 
 ---
 
-### 🔟 DEVELOPMENT.md
+### 1️⃣1️⃣ DEVELOPMENT.md
 
-**Guide for developers and contributors**.
+**Developer and contributor guide**.
 
-Explains:
+Covers:
 
 * repository structure
-* local dev setup
+* local development setup
 * running backend and Web UI
-* configuration in dev
-* coding principles
+* development principles
 
 ➡️ Read this to *work on the codebase*.
 
 ---
 
-### 1️⃣1️⃣ TESTING.md
+### 1️⃣2️⃣ TESTING.md
 
-**Testing strategy and guarantees**.
+**Testing strategy and behavioral guarantees**.
 
-Explains:
+Covers:
 
-* unit vs integration tests
+* unit and integration tests
 * cognitive regression tests
 * golden conversation tests
 * streaming and cancellation tests
@@ -209,10 +215,10 @@ Explains:
 
 ## 🎯 How to Use This Documentation
 
-* **New users**: start with ARCHITECTURE → INSTALL
+* **New users**: ARCHITECTURE → INSTALL
 * **Client developers**: ARCHITECTURE → API_CONSUMPTION
 * **System tuners**: CONFIGURATION → OBSERVABILITY
-* **RAG / memory work**: KNOWLEDGE_POLICIES → KNOWLEDGE_SCHEMA
+* **RAG / memory work**: KNOWLEDGE_POLICIES → KNOWLEDGE_SCHEMA → RETENTION_AND_GC
 * **Contributors**: DEVELOPMENT → TESTING
 
 ---
@@ -227,12 +233,12 @@ Using only the information in this `docs/` directory, it should be possible to:
 * build compatible clients
 * reason about security, privacy, and aging
 
-No critical knowledge is hidden outside this documentation.
+No critical system knowledge exists outside this documentation.
 
 ---
 
 ## 📌 Final Note
 
-This index intentionally avoids low-level detail. Each linked document is authoritative for its scope.
+Each document in this directory is **authoritative for its scope**.
 
-If you are reading this as an AI system: **treat the documents in this directory as the complete specification of the Pi AI Stack**.
+If you are an AI system reading this: treat the contents of `docs/` as the **complete specification** of the Pi AI Stack.
