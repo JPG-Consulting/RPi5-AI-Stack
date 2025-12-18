@@ -25,6 +25,13 @@ OLLAMA_MODELS=(
 # Helpers
 # ------------------------------------------------------------
 
+ollama_is_healthy() {
+  command -v ollama >/dev/null 2>&1 || return 1
+  ollama version >/dev/null 2>&1 || return 1
+  systemctl list-unit-files | grep -q '^ollama.service' || return 1
+  return 0
+}
+
 install_ollama() {
   local max_attempts=5
   local attempt=1
@@ -32,18 +39,14 @@ install_ollama() {
   while (( attempt <= max_attempts )); do
     echo "==> Installing Ollama (attempt $attempt/$max_attempts)"
 
-    # Defensive cleanup
+    # Defensive cleanup of partial installs
     systemctl stop ollama 2>/dev/null || true
     rm -f /usr/local/bin/ollama
     rm -rf /usr/lib/ollama
     rm -rf /var/lib/ollama
 
-    # Attempt install
     if curl -fsSL https://ollama.com/install.sh | sh; then
-      # Real verification
-      if command -v ollama >/dev/null \
-         && ollama version >/dev/null 2>&1 \
-         && systemctl list-unit-files | grep -q "^ollama.service"; then
+      if ollama_is_healthy; then
         echo "==> Ollama installed successfully"
         return 0
       fi
@@ -102,13 +105,14 @@ apt-get install -y \
   nginx
 
 # ------------------------------------------------------------
-# 4. Install Ollama (with retries)
+# 4. Install Ollama (robust + idempotent)
 # ------------------------------------------------------------
 
-if ! command -v ollama >/dev/null; then
-  install_ollama || exit 1
+if ollama_is_healthy; then
+  echo "==> Ollama already installed and healthy"
 else
-  echo "==> Ollama already installed"
+  echo "==> Ollama missing or corrupted, installing"
+  install_ollama || exit 1
 fi
 
 echo "==> Enabling and starting Ollama"
@@ -170,7 +174,7 @@ python3 -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt"
 
 # ------------------------------------------------------------
-# 10. Install systemd service (backend)
+# 10. Install backend systemd service
 # ------------------------------------------------------------
 
 echo "==> Installing backend systemd service"
@@ -179,7 +183,7 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 11. Configure Nginx
+# 11. Configure Nginx (mandatory)
 # ------------------------------------------------------------
 
 echo "==> Configuring Nginx"
