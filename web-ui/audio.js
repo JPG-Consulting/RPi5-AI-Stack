@@ -33,7 +33,9 @@ export class StreamingAudioPlayer {
   }
 
   async playOpusStream(url, body) {
-    if (!supportsOpusMSE()) throw new Error("OPUS/OGG MediaSource not supported.");
+    if (!supportsOpusMSE()) {
+      throw new Error("OPUS_NOT_SUPPORTED");
+    }
 
     this.stop();
     this.abortController = new AbortController();
@@ -70,7 +72,7 @@ export class StreamingAudioPlayer {
       body: JSON.stringify(body),
       signal: this.abortController.signal
     });
-    if (!resp.ok) throw new Error(`TTS failed: ${resp.status}`);
+    if (!resp.ok) throw new Error(`TTS_OPUS_FAILED_${resp.status}`);
 
     const reader = resp.body.getReader();
 
@@ -90,5 +92,34 @@ export class StreamingAudioPlayer {
 
     this.ended = true;
     pump();
+  }
+
+  async playMp3(url, body) {
+    this.stop();
+    this.abortController = new AbortController();
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, response_format: "mp3" }),
+      signal: this.abortController.signal
+    });
+    if (!resp.ok) throw new Error(`TTS_MP3_FAILED_${resp.status}`);
+
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    this.audioEl.src = objUrl;
+    this.audioEl.classList.remove("hidden");
+    this.playing = true;
+    await this.audioEl.play();
+  }
+
+  async playWithFallback(url, body) {
+    try {
+      await this.playOpusStream(url, { ...body, response_format: "opus" });
+    } catch (e) {
+      console.warn("OPUS failed, falling back to MP3", e);
+      await this.playMp3(url, body);
+    }
   }
 }

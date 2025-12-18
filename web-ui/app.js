@@ -116,12 +116,9 @@ async function send() {
   if (ttsToggle.checked && full.trim()) {
     setStatus("Reproduciendo audio…");
     try {
-      await audioPlayer.playOpusStream("/v1/audio/speech", {
-        input: full,
-        response_format: "opus"
-      });
+      await audioPlayer.playWithFallback("/v1/audio/speech", { input: full });
     } catch (e) {
-      console.warn(e);
+      console.warn("TTS failed", e);
     } finally {
       setStatus("Listo");
     }
