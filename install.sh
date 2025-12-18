@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pi AI Stack installer
-# Target: Debian-based systems (Raspberry Pi 5)
+# Target: Debian-based systems (Raspberry Pi OS recommended)
 # Install path: /opt/pi-ai-stack
 
 set -euo pipefail
@@ -21,7 +21,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-for cmd in python3 pip3 systemctl apt-get; do
+for cmd in python3 systemctl apt-get; do
   command -v "$cmd" >/dev/null || {
     echo "ERROR: Required command not found: $cmd"
     exit 1
@@ -46,6 +46,11 @@ apt-get update
 apt-get install -y \
   python3-venv \
   python3-dev \
+  python3-pip \
+  build-essential \
+  pkg-config \
+  libffi-dev \
+  libssl-dev \
   ffmpeg \
   curl \
   ca-certificates
