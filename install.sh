@@ -9,6 +9,9 @@ IFS=$'\n\t'
 INSTALL_DIR="/opt/pi-ai-stack"
 SERVICE_NAME="pi-ai-stack"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+NGINX_SITE="pi-ai-stack"
+NGINX_AVAILABLE="/etc/nginx/sites-available/${NGINX_SITE}"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${NGINX_SITE}"
 
 echo "==> Installing Pi AI Stack"
 
@@ -29,16 +32,21 @@ for cmd in python3 systemctl apt-get; do
 done
 
 # ------------------------------------------------------------
-# 2. Stop existing service (if any)
+# 2. Stop existing services (if any)
 # ------------------------------------------------------------
 
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
-  echo "==> Stopping existing service"
+  echo "==> Stopping existing Pi AI Stack service"
   systemctl stop "${SERVICE_NAME}" || true
 fi
 
+if systemctl list-unit-files | grep -q "^nginx.service"; then
+  echo "==> Stopping existing Nginx service"
+  systemctl stop nginx || true
+fi
+
 # ------------------------------------------------------------
-# 3. System dependencies
+# 3. System dependencies (INCLUDING NGINX)
 # ------------------------------------------------------------
 
 echo "==> Installing system dependencies"
@@ -53,7 +61,8 @@ apt-get install -y \
   libssl-dev \
   ffmpeg \
   curl \
-  ca-certificates
+  ca-certificates \
+  nginx
 
 # ------------------------------------------------------------
 # 4. Deploy application
@@ -114,35 +123,81 @@ fi
 # 8. Install systemd service
 # ------------------------------------------------------------
 
-echo "==> Installing systemd service"
+echo "==> Installing Pi AI Stack systemd service"
 
 cp "${INSTALL_DIR}/pi-ai-stack.service" "${SERVICE_FILE}"
-
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 9. Start and verify service
+# 9. Configure Nginx
 # ------------------------------------------------------------
 
-echo "==> Starting service"
+echo "==> Configuring Nginx"
+
+cat > "${NGINX_AVAILABLE}" <<'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    root /opt/pi-ai-stack/web-ui;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /v1/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+rm -f /etc/nginx/sites-enabled/default
+ln -sf "${NGINX_AVAILABLE}" "${NGINX_ENABLED}"
+
+nginx -t
+systemctl enable nginx
+
+# ------------------------------------------------------------
+# 10. Start services
+# ------------------------------------------------------------
+
+echo "==> Starting services"
+
+systemctl restart nginx
 systemctl restart "${SERVICE_NAME}"
 
 sleep 2
 
+if ! systemctl is-active --quiet nginx; then
+  echo "ERROR: Nginx failed to start"
+  journalctl -u nginx -n 50 --no-pager
+  exit 1
+fi
+
 if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
-  echo "ERROR: Service failed to start"
-  echo "---- Last logs ----"
+  echo "ERROR: Pi AI Stack service failed to start"
   journalctl -u "${SERVICE_NAME}" -n 50 --no-pager
   exit 1
 fi
 
 # ------------------------------------------------------------
-# 10. Final output
+# 11. Final output
 # ------------------------------------------------------------
 
 echo
 echo "Pi AI Stack installed successfully."
-echo "API available at: http://localhost:8000"
-echo "View logs with: journalctl -u ${SERVICE_NAME} -f"
+echo
+echo "Web UI:  http://<raspberry-ip>/"
+echo "API:     http://<raspberry-ip>/v1/"
+echo
+echo "Logs:"
+echo "  Backend: journalctl -u ${SERVICE_NAME} -f"
+echo "  Nginx:   journalctl -u nginx -f"
 echo

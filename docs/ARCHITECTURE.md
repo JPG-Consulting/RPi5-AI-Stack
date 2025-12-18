@@ -1,85 +1,82 @@
 # Architecture – Pi AI Stack
 
-This document describes the **global architecture** of the Pi AI Stack project.
-It is intended to be:
-
-- a single-page mental model of the system
-- readable by humans and AI tools
-- a reference for future maintenance and evolution
+This document describes the global architecture of **Pi AI Stack**.
+It is intended to be a concise but complete reference for both humans and automated tools.
 
 ---
 
 ## 1. High-Level Overview
 
-Pi AI Stack is a **local-first AI runtime** designed for Raspberry Pi 5.
+Pi AI Stack is a **local-first AI runtime** designed to run on **Raspberry Pi 5**.
 
 It provides:
 
-- an **OpenAI-compatible API**
-- local **LLM inference** via Ollama
-- local **Speech-to-Text (STT)** via Whisper
-- local **Text-to-Speech (TTS)** via Piper
-- governed **RAG + Facts memory**
-- a lightweight **Web UI**
-- full offline operation (optional cloud fallback)
+- An **OpenAI-compatible API**
+- Local **LLM inference** via Ollama
+- Local **Speech-to-Text (STT)** via Whisper
+- Local **Text-to-Speech (TTS)** via Piper
+- Governed **RAG + Facts memory**
+- A built-in **Web UI**
+- Offline-first operation
 
-All intelligence, policy, and memory live in the backend.
-The Web UI is a thin client.
+The system is designed to be **predictable, secure, and easy to operate**.
 
 ---
 
 ## 2. Runtime Components
 
 ```
-┌────────────┐
-│   Web UI   │
-│ (Browser)  │
-└─────┬──────┘
-      │ HTTP (SSE + streaming audio)
-      ▼
-┌──────────────────────┐
-│        Nginx         │
-│  - static Web UI     │
-│  - reverse proxy     │
-└─────┬────────────────┘
-      │ localhost
-      ▼
-┌──────────────────────┐
-│     FastAPI App      │
-│      (ai_api)        │
-├──────────────────────┤
-│ ConversationControl  │
-│ ContextAssembler     │
-│ Facts pipeline       │
-│ RAG pipeline         │
-│ GC / Retention       │
-│ Observability        │
-└─────┬────────────────┘
-      │
-      ▼
-┌──────────────────────┐
-│   Local Engines      │
-│  - Ollama (LLM)      │
-│  - Whisper (STT)     │
-│  - Piper (TTS)       │
-└──────────────────────┘
+LAN Client / Browser
+        |
+        v
+     Nginx :80
+        |
+        +--> /        -> Web UI (static)
+        |
+        +--> /v1/*    -> FastAPI Backend (127.0.0.1:8000)
+                                |
+                                v
+                         Local AI Engines
+                     (Ollama, Whisper, Piper)
 ```
 
 ---
 
-## 3. Backend Layout
+## 3. Mandatory Reverse Proxy (Nginx)
+
+**Nginx is a mandatory component of Pi AI Stack.**
+
+The FastAPI backend is intentionally bound to `127.0.0.1` and is **never exposed
+directly to the network**.
+
+All external access goes through Nginx:
+
+- `/` serves the Web UI
+- `/v1/*` proxies the OpenAI-compatible API to FastAPI
+
+This design:
+
+- provides a single entry point
+- isolates the backend from the network
+- avoids exposing internal ports
+- matches production-grade deployment patterns
+
+Direct access to port `8000` from the LAN is neither required nor supported.
+
+---
+
+## 4. Backend Architecture
+
+The backend is a single FastAPI service implemented as the `ai_api` Python package.
 
 ```
 backend/
 └── ai_api/
     ├── main.py
     ├── config.py
-    ├── context_assembler.py
     ├── conversation_control.py
-    ├── db.py
+    ├── context_assembler.py
     ├── routers/
-    │   ├── chat.py
-    │   └── audio.py
     ├── rag/
     ├── facts/
     ├── gc/
@@ -88,186 +85,133 @@ backend/
 
 Key principles:
 
-- `ai_api` is the **only Python package**
-- All policies live in backend code, not the UI
-- No global state outside SQLite
+- One backend service
+- One Python package
+- All intelligence and policy live in the backend
 
 ---
 
-## 4. Configuration Model
+## 5. Configuration Model
 
-### Single source of truth
+- All configuration lives in `config.yaml` at the repository root
+- Configuration is loaded once at startup
+- The path to `config.yaml` is resolved using `__file__`, not the working directory
 
-- Configuration lives in **`config.yaml` at the repo root**
-- Loaded once at startup
-- Strongly typed using Pydantic models
-
-### Config loading (important)
-
-The configuration file is **NOT loaded relative to the working directory**.
-
-Instead, it is resolved relative to the package location:
-
-```python
-Path(__file__).resolve().parents[2] / "config.yaml"
-```
-
-This guarantees that:
+This guarantees consistent behavior across:
 
 - systemd
-- CLI execution
+- local development
 - tests
-- different working directories
-
-all behave consistently.
 
 ---
 
-## 5. Python Import Paths and systemd WorkingDirectory
+## 6. Python Import Paths and systemd
 
-The backend Python package (`ai_api`) lives under:
+The backend package (`ai_api`) lives under `backend/ai_api`.
+
+The systemd unit sets:
 
 ```
-backend/ai_api
+WorkingDirectory=/opt/pi-ai-stack/backend
 ```
 
-For this reason, the **systemd unit MUST ensure that `backend/` is present in
-Python’s import path**.
-
-The current and supported approach is:
-
-- `WorkingDirectory` is set to `/opt/pi-ai-stack/backend`
-- `uvicorn` is executed using absolute paths
-- No reliance on `PYTHONPATH` is required
-
-This guarantees that:
+This ensures:
 
 - `import ai_api` works reliably
-- the application can be started via systemd, CLI, or tests
-- no implicit assumptions about the current working directory leak into code
-
-> ⚠️ If `WorkingDirectory` is changed to `/opt/pi-ai-stack`, the service will fail
-> with `ModuleNotFoundError: No module named 'ai_api'` unless `PYTHONPATH` is
-> explicitly adjusted or the package layout is changed.
-
-The configuration file (`config.yaml`) is **not affected by the working directory**,
-as it is resolved relative to the package location using `__file__`.
+- no `PYTHONPATH` hacks are required
+- consistent imports in all environments
 
 ---
 
-## 6. Conversation Flow
+## 7. Conversation Flow
 
-1. User sends a message
-2. `ConversationControl` intercepts:
-   - repeat
-   - meta questions
-   - normal conversation
-3. `ContextAssembler` builds the prompt:
-   - last N turns
-   - summaries
-   - facts
-   - RAG entries
-4. LLM is queried (Ollama)
-5. Confidence scoring applied
-6. Optional fallback to OpenAI (if enabled)
-7. Response returned (streaming)
+1. Client sends a request via `/v1/*`
+2. Nginx proxies the request to FastAPI
+3. ConversationControl classifies the request
+4. ContextAssembler builds the prompt
+5. LLM is queried via Ollama
+6. Confidence scoring is applied
+7. Optional fallback logic is evaluated
+8. Response is streamed back to the client
 
 ---
 
-## 7. RAG and Facts Governance
+## 8. Memory and Knowledge
 
 ### RAG
-- Disabled/Enabled via config
-- Embeddings stored locally
-- Only high-confidence, non-dynamic knowledge persists
-- TTL + GC enforced
+- Governed ingestion
+- Confidence-based persistence
+- TTL and garbage collection
+- Local embeddings
 
 ### Facts
-- Explicit extraction (rules + LLM)
-- L1 (rules) + L2 (LLM validation)
-- User-scoped
-- Bounded in prompt size
+- Explicit extraction
+- Validation (L1 + L2)
+- User-scoped storage
+- Bounded prompt injection
 
 ---
 
-## 8. Storage Model
+## 9. Storage
 
-- SQLite database
-- Single file
+- SQLite (single file)
 - WAL mode
-- Hard size limits
+- Size limits enforced
 - Periodic garbage collection
 
-No external databases are required.
+No external database is required.
 
 ---
 
-## 9. Streaming Model
+## 10. Streaming Model
 
-- Chat: SSE (`text/event-stream`)
-- TTS:
-  - OPUS streaming (preferred)
-  - MP3 fallback
-  - PCM supported for embedded clients
-- STT:
-  - Batch transcription via Whisper
+- Chat responses: Server-Sent Events (SSE)
+- TTS: streaming audio (OPUS, MP3, PCM)
+- STT: batch transcription
 
-Cancellation is **not an error** and does not trigger fallback.
+Client-side interruptions are handled gracefully and do not trigger fallback.
 
 ---
 
-## 10. Web UI Architecture
+## 11. Web UI
 
-- Static files served by Nginx
-- No build step
-- No stateful logic
-- Uses the same `/v1/*` API as any client
+- Static client served by Nginx
+- No backend logic
+- No build step required
+- Uses the same OpenAI-compatible API as any external client
 
-The Web UI is optional and replaceable.
+The Web UI is a convenience layer, not a dependency of the backend.
 
 ---
 
-## 11. Observability
+## 12. Observability
 
-- JSON metrics endpoint
+- JSON-based metrics
 - No Prometheus dependency
-- Focus on:
-  - usage
-  - cancellations
-  - confidence levels
-  - RAG activity
+- Focus on correctness and usage visibility
 
 ---
 
-## 12. Design Constraints and Non-Goals
+## 13. Design Constraints
 
 Explicit non-goals:
 
 - Kubernetes
-- microservices
-- Redis
-- external vector databases
-- Prometheus/Grafana
-
-The system is designed to **age well**, not to scale infinitely.
+- Microservices
+- External databases
+- Exposing backend ports directly
 
 ---
 
-## 13. Architectural Guarantees
+## 14. Summary
 
-- No implicit CWD dependencies
-- No hidden memory growth
-- No silent knowledge pollution
-- Deterministic startup
-- Offline-first
+Pi AI Stack follows a **single-entry-point architecture**:
+
+- Nginx is mandatory
+- Backend is isolated
+- Configuration is deterministic
+- The system is designed to age well
 
 ---
 
-## 14. Status
-
-This architecture represents a **pre-alpha but production-grade foundation**.
-
-Future changes should:
-- preserve these guarantees
-- be validated by tests
-- update this document when assumptions change
+End of document.
