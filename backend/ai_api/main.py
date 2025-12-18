@@ -13,7 +13,7 @@ from ai_api.gc.runner import periodic_gc_task
 def create_app() -> FastAPI:
     app = FastAPI(title="Pi AI Stack API")
 
-    cfg = load_config("config.yaml")
+    cfg = load_config()
     app.state.cfg = cfg
 
     app.state.db_path = cfg.storage.db_path

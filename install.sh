@@ -1,168 +1,143 @@
 #!/usr/bin/env bash
+# Pi AI Stack installer
+# Target: Debian-based systems (Raspberry Pi 5)
+# Install path: /opt/pi-ai-stack
+
 set -euo pipefail
+IFS=$'\n\t'
 
-### CONFIG ###
 INSTALL_DIR="/opt/pi-ai-stack"
-STATE_FILE="$INSTALL_DIR/install.state"
-PYTHON_VERSION="3.11"
-OLLAMA_MODEL_MAIN="llama3.2:3b"
-OLLAMA_MODEL_FACTS="llama3.2:1b"
-OLLAMA_MODEL_EMBED="nomic-embed-text"
+SERVICE_NAME="pi-ai-stack"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-### HELPERS ###
-log() {
-  echo "[install] $1"
-}
+echo "==> Installing Pi AI Stack"
 
-require_root() {
-  if [[ "$EUID" -ne 0 ]]; then
-    echo "Please run as root (sudo ./install.sh)"
+# ------------------------------------------------------------
+# 1. Preconditions
+# ------------------------------------------------------------
+
+if [[ $EUID -ne 0 ]]; then
+  echo "ERROR: This installer must be run as root (use sudo)."
+  exit 1
+fi
+
+for cmd in python3 pip3 systemctl apt-get; do
+  command -v "$cmd" >/dev/null || {
+    echo "ERROR: Required command not found: $cmd"
     exit 1
-  fi
-}
+  }
+done
 
-save_state() {
-  echo "$1" > "$STATE_FILE"
-}
+# ------------------------------------------------------------
+# 2. Stop existing service (if any)
+# ------------------------------------------------------------
 
-load_state() {
-  if [[ -f "$STATE_FILE" ]]; then
-    cat "$STATE_FILE"
-  else
-    echo "start"
-  fi
-}
+if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
+  echo "==> Stopping existing service"
+  systemctl stop "${SERVICE_NAME}" || true
+fi
 
-### STEPS ###
-step_system_update() {
-  log "Updating system"
-  apt-get update
-  apt-get upgrade -y
-}
+# ------------------------------------------------------------
+# 3. System dependencies
+# ------------------------------------------------------------
 
-step_install_packages() {
-  log "Installing system packages"
-  apt-get install -y \
-    python3 python3-venv python3-pip \
-    git curl wget \
-    ffmpeg \
-    nginx \
-    sqlite3
-}
+echo "==> Installing system dependencies"
+apt-get update
+apt-get install -y \
+  python3-venv \
+  python3-dev \
+  ffmpeg \
+  curl \
+  ca-certificates
 
-step_install_ollama() {
-  if ! command -v ollama >/dev/null; then
-    log "Installing Ollama"
-    curl -fsSL https://ollama.com/install.sh | sh
-  else
-    log "Ollama already installed"
-  fi
+# ------------------------------------------------------------
+# 4. Deploy application
+# ------------------------------------------------------------
 
-  systemctl enable ollama
-  systemctl start ollama
+echo "==> Deploying application to ${INSTALL_DIR}"
 
-  log "Pulling Ollama models"
-  ollama pull "$OLLAMA_MODEL_MAIN"
-  ollama pull "$OLLAMA_MODEL_FACTS"
-  ollama pull "$OLLAMA_MODEL_EMBED"
-}
+rm -rf "${INSTALL_DIR}"
+mkdir -p "${INSTALL_DIR}"
+cp -r . "${INSTALL_DIR}"
 
-step_prepare_dirs() {
-  log "Creating directories"
-  mkdir -p "$INSTALL_DIR"/{backend,data,logs}
-}
+# ------------------------------------------------------------
+# 5. Validate required files
+# ------------------------------------------------------------
 
-step_copy_repo() {
-  log "Copying repository files"
-  rsync -a --delete \
-    --exclude '.git' \
-    --exclude '.github' \
-    ./ "$INSTALL_DIR/"
-}
+if [[ ! -f "${INSTALL_DIR}/config.yaml" ]]; then
+  echo "ERROR: config.yaml not found in ${INSTALL_DIR}"
+  exit 1
+fi
 
-step_python_env() {
-  log "Setting up Python virtualenv"
-  cd "$INSTALL_DIR/backend"
-  python3 -m venv .venv
-  source .venv/bin/activate
-  pip install --upgrade pip
-  pip install -r requirements.txt
-}
+if [[ ! -f "${INSTALL_DIR}/backend/ai_api/main.py" ]]; then
+  echo "ERROR: backend/ai_api/main.py not found"
+  exit 1
+fi
 
-step_nginx() {
-  log "Configuring Nginx"
-  cp nginx.pi-ai-stack.conf /etc/nginx/sites-available/pi-ai-stack
-  ln -sf /etc/nginx/sites-available/pi-ai-stack /etc/nginx/sites-enabled/pi-ai-stack
-  rm -f /etc/nginx/sites-enabled/default
-  nginx -t
-  systemctl reload nginx
-}
+if [[ ! -f "${INSTALL_DIR}/pi-ai-stack.service" ]]; then
+  echo "ERROR: pi-ai-stack.service not found"
+  exit 1
+fi
 
-step_systemd() {
-  log "Installing systemd service"
-  cp pi-ai-stack.service /etc/systemd/system/pi-ai-stack.service
-  systemctl daemon-reload
-  systemctl enable pi-ai-stack
-  systemctl restart pi-ai-stack
-}
+# ------------------------------------------------------------
+# 6. Runtime directories
+# ------------------------------------------------------------
 
-step_reboot_if_needed() {
-  if [[ -f /var/run/reboot-required ]]; then
-    log "Reboot required, resuming after reboot"
-    save_state "post-reboot"
-    reboot
-  fi
-}
+echo "==> Creating runtime directories"
+mkdir -p "${INSTALL_DIR}/data"
 
-### MAIN ###
-require_root
-STATE="$(load_state)"
+# ------------------------------------------------------------
+# 7. Python virtual environment
+# ------------------------------------------------------------
 
-case "$STATE" in
-  start)
-    step_system_update
-    save_state "packages"
-    step_reboot_if_needed
-    ;;
-  packages)
-    step_install_packages
-    save_state "ollama"
-    ;;
-  ollama)
-    step_install_ollama
-    save_state "dirs"
-    ;;
-  dirs)
-    step_prepare_dirs
-    save_state "copy"
-    ;;
-  copy)
-    step_copy_repo
-    save_state "python"
-    ;;
-  python)
-    step_python_env
-    save_state "nginx"
-    ;;
-  nginx)
-    step_nginx
-    save_state "systemd"
-    ;;
-  systemd)
-    step_systemd
-    save_state "done"
-    ;;
-  post-reboot)
-    log "Resuming after reboot"
-    save_state "packages"
-    ;;
-  done)
-    log "Installation already completed"
-    ;;
-  *)
-    echo "Unknown install state: $STATE"
-    exit 1
-    ;;
-esac
+echo "==> Setting up Python virtual environment"
 
-log "Installation step '$STATE' completed"
+VENV_DIR="${INSTALL_DIR}/backend/.venv"
+python3 -m venv "${VENV_DIR}"
+
+"${VENV_DIR}/bin/pip" install --upgrade pip wheel setuptools
+
+REQ_FILE="${INSTALL_DIR}/backend/requirements.txt"
+if [[ ! -f "${REQ_FILE}" ]]; then
+  echo "ERROR: backend/requirements.txt not found"
+  exit 1
+fi
+
+"${VENV_DIR}/bin/pip" install -r "${REQ_FILE}"
+
+# ------------------------------------------------------------
+# 8. Install systemd service
+# ------------------------------------------------------------
+
+echo "==> Installing systemd service"
+
+cp "${INSTALL_DIR}/pi-ai-stack.service" "${SERVICE_FILE}"
+
+systemctl daemon-reload
+systemctl enable "${SERVICE_NAME}"
+
+# ------------------------------------------------------------
+# 9. Start and verify service
+# ------------------------------------------------------------
+
+echo "==> Starting service"
+systemctl restart "${SERVICE_NAME}"
+
+sleep 2
+
+if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
+  echo "ERROR: Service failed to start"
+  echo "---- Last logs ----"
+  journalctl -u "${SERVICE_NAME}" -n 50 --no-pager
+  exit 1
+fi
+
+# ------------------------------------------------------------
+# 10. Final output
+# ------------------------------------------------------------
+
+echo
+echo "Pi AI Stack installed successfully."
+echo "API available at: http://localhost:8000"
+echo "View logs with: journalctl -u ${SERVICE_NAME} -f"
+echo

@@ -108,7 +108,11 @@ class AppCfg(BaseModel):
     gc: GcCfg = GcCfg()
     observability: ObservabilityCfg = ObservabilityCfg()
 
-def load_config(path: str | Path) -> AppCfg:
+def load_config(path: str | Path | None = None) -> AppCfg:
+    if path is None:
+        # backend/ai_api/config.py → repo root
+        path = Path(__file__).resolve().parents[2] / "config.yaml"
+
     p = Path(path)
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     return AppCfg.model_validate(data)
