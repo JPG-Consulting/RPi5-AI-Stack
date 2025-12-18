@@ -2,9 +2,17 @@
 
 The Web UI is **optional** and designed as a thin client for the backend API.
 
-## Audio strategy
+## Features
 
-1. **Primary**: OPUS streaming (`audio/ogg; codecs="opus"`) via MediaSource
-2. **Fallback**: MP3 (single-shot download)
+- Chat streaming (SSE)
+- TTS with OPUS → MP3 fallback
+- **Speech-to-Text (STT)** via microphone
+- Audio interruption on typing
+- No frontend context or memory
 
-Fallback is automatic if OPUS is unsupported or fails.
+## Speech-to-Text
+
+- Uses browser `MediaRecorder`
+- Records short audio clips (`audio/webm`)
+- Sends to `/v1/audio/transcriptions`
+- The transcribed text is inserted into the input box

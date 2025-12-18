@@ -100,3 +100,8 @@ textarea:focus { border-color: rgba(59,130,246,0.45); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .status { padding: 0 4px; color: var(--muted); font-size: 13px; }
 .hidden { display: none; }
+
+.btn.recording {
+  background: #ef4444;
+  color: white;
+}

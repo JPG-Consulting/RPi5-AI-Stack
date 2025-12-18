@@ -8,12 +8,18 @@ const stopBtn = document.getElementById("stopBtn");
 const statusText = document.getElementById("statusText");
 const ttsToggle = document.getElementById("ttsToggle");
 const audioEl = document.getElementById("audio");
+const micBtn = document.getElementById("micBtn");
 
 let conversationId = null;
 let chatAbort = null;
 let generating = false;
 
 const audioPlayer = new StreamingAudioPlayer(audioEl);
+
+// STT state
+let mediaRecorder = null;
+let recordedChunks = [];
+let recording = false;
 
 function setStatus(s) { statusText.textContent = s; }
 
@@ -124,6 +130,51 @@ async function send() {
     }
   }
 }
+
+// STT logic
+micBtn.addEventListener("click", async () => {
+  if (!recording) {
+    // start recording
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordedChunks, { type: "audio/webm" });
+      const form = new FormData();
+      form.append("file", blob, "speech.webm");
+
+      setStatus("Transcribiendo…");
+      try {
+        const resp = await fetch("/v1/audio/transcriptions", {
+          method: "POST",
+          body: form
+        });
+        const data = await resp.json();
+        if (data?.text) {
+          inputEl.value = data.text;
+          autosize();
+        }
+      } catch (e) {
+        console.warn("STT failed", e);
+      } finally {
+        setStatus("Listo");
+      }
+    };
+
+    mediaRecorder.start();
+    recording = true;
+    micBtn.classList.add("recording");
+    setStatus("Grabando…");
+  } else {
+    // stop recording
+    mediaRecorder.stop();
+    recording = false;
+    micBtn.classList.remove("recording");
+  }
+});
 
 sendBtn.addEventListener("click", () => send());
 inputEl.addEventListener("keydown", (e) => {
