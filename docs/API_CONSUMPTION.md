@@ -11,3 +11,11 @@ Supported endpoints:
 - /audio/speech
 
 Streaming is supported for chat and TTS.
+
+## Web UI
+
+If installed, the Web UI is served at:
+
+- `http://<pi-ip>/`
+
+and consumes the same API under `/v1/*`.

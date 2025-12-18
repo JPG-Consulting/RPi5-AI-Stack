@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pi AI Stack</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Pi AI Stack</div>
+    <div class="spacer"></div>
+    <label class="toggle">
+      <input id="ttsToggle" type="checkbox" checked />
+      <span>TTS</span>
+    </label>
+    <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
+  </header>
+
+  <main class="layout">
+    <section id="chat" class="chat"></section>
+
+    <section class="composer">
+      <textarea id="input" rows="1" placeholder="Escribe un mensaje..."></textarea>
+      <button id="sendBtn" class="btn btn-primary">Enviar</button>
+    </section>
+
+    <section class="status">
+      <span id="statusText">Listo</span>
+    </section>
+
+    <audio id="audio" class="hidden"></audio>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
