@@ -1,0 +1,17 @@
+{
+  "conversation": [
+    {
+      "user": "Hola"
+    },
+    {
+      "assistant": "Hola, ¿en qué puedo ayudarte?"
+    },
+    {
+      "user": "Repite"
+    }
+  ],
+  "expect": {
+    "repeat": true,
+    "context_growth": 0
+  }
+}
