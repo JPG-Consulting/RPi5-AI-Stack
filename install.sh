@@ -21,7 +21,42 @@ OLLAMA_MODELS=(
   "nomic-embed-text"
 )
 
-echo "==> Installing Pi AI Stack"
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+install_ollama() {
+  local max_attempts=5
+  local attempt=1
+
+  while (( attempt <= max_attempts )); do
+    echo "==> Installing Ollama (attempt $attempt/$max_attempts)"
+
+    # Defensive cleanup
+    systemctl stop ollama 2>/dev/null || true
+    rm -f /usr/local/bin/ollama
+    rm -rf /usr/lib/ollama
+    rm -rf /var/lib/ollama
+
+    # Attempt install
+    if curl -fsSL https://ollama.com/install.sh | sh; then
+      # Real verification
+      if command -v ollama >/dev/null \
+         && ollama version >/dev/null 2>&1 \
+         && systemctl list-unit-files | grep -q "^ollama.service"; then
+        echo "==> Ollama installed successfully"
+        return 0
+      fi
+    fi
+
+    echo "!! Ollama install attempt $attempt failed"
+    attempt=$((attempt + 1))
+    sleep $((attempt * 3))
+  done
+
+  echo "ERROR: Ollama could not be installed after $max_attempts attempts"
+  return 1
+}
 
 # ------------------------------------------------------------
 # 1. Preconditions
@@ -40,11 +75,12 @@ for cmd in python3 systemctl apt-get curl; do
 done
 
 # ------------------------------------------------------------
-# 2. Stop existing services (if any)
+# 2. Stop existing services
 # ------------------------------------------------------------
 
 systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
 systemctl stop nginx 2>/dev/null || true
+systemctl stop ollama 2>/dev/null || true
 
 # ------------------------------------------------------------
 # 3. System dependencies (INCLUDING NGINX)
@@ -66,12 +102,11 @@ apt-get install -y \
   nginx
 
 # ------------------------------------------------------------
-# 4. Install Ollama (mandatory)
+# 4. Install Ollama (with retries)
 # ------------------------------------------------------------
 
 if ! command -v ollama >/dev/null; then
-  echo "==> Installing Ollama"
-  curl -fsSL https://ollama.com/install.sh | sh
+  install_ollama || exit 1
 else
   echo "==> Ollama already installed"
 fi
@@ -80,7 +115,7 @@ echo "==> Enabling and starting Ollama"
 systemctl enable ollama
 systemctl start ollama
 
-echo "==> Waiting for Ollama API to be available"
+echo "==> Waiting for Ollama API"
 until curl -s "${OLLAMA_API}/api/tags" >/dev/null; do
   sleep 1
 done
@@ -144,7 +179,7 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 11. Configure Nginx (mandatory)
+# 11. Configure Nginx
 # ------------------------------------------------------------
 
 echo "==> Configuring Nginx"
