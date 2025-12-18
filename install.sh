@@ -9,9 +9,17 @@ IFS=$'\n\t'
 INSTALL_DIR="/opt/pi-ai-stack"
 SERVICE_NAME="pi-ai-stack"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+
 NGINX_SITE="pi-ai-stack"
 NGINX_AVAILABLE="/etc/nginx/sites-available/${NGINX_SITE}"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${NGINX_SITE}"
+
+OLLAMA_API="http://127.0.0.1:11434"
+OLLAMA_MODELS=(
+  "llama3.2:3b"
+  "llama3.2:1b"
+  "nomic-embed-text"
+)
 
 echo "==> Installing Pi AI Stack"
 
@@ -24,7 +32,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-for cmd in python3 systemctl apt-get; do
+for cmd in python3 systemctl apt-get curl; do
   command -v "$cmd" >/dev/null || {
     echo "ERROR: Required command not found: $cmd"
     exit 1
@@ -35,15 +43,8 @@ done
 # 2. Stop existing services (if any)
 # ------------------------------------------------------------
 
-if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
-  echo "==> Stopping existing Pi AI Stack service"
-  systemctl stop "${SERVICE_NAME}" || true
-fi
-
-if systemctl list-unit-files | grep -q "^nginx.service"; then
-  echo "==> Stopping existing Nginx service"
-  systemctl stop nginx || true
-fi
+systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
+systemctl stop nginx 2>/dev/null || true
 
 # ------------------------------------------------------------
 # 3. System dependencies (INCLUDING NGINX)
@@ -65,72 +66,85 @@ apt-get install -y \
   nginx
 
 # ------------------------------------------------------------
-# 4. Deploy application
+# 4. Install Ollama (mandatory)
+# ------------------------------------------------------------
+
+if ! command -v ollama >/dev/null; then
+  echo "==> Installing Ollama"
+  curl -fsSL https://ollama.com/install.sh | sh
+else
+  echo "==> Ollama already installed"
+fi
+
+echo "==> Enabling and starting Ollama"
+systemctl enable ollama
+systemctl start ollama
+
+echo "==> Waiting for Ollama API to be available"
+until curl -s "${OLLAMA_API}/api/tags" >/dev/null; do
+  sleep 1
+done
+
+# ------------------------------------------------------------
+# 5. Pull required Ollama models
+# ------------------------------------------------------------
+
+echo "==> Ensuring required Ollama models are available"
+
+for model in "${OLLAMA_MODELS[@]}"; do
+  if ollama list | grep -q "^${model}\b"; then
+    echo "  - Model already present: ${model}"
+  else
+    echo "  - Pulling model: ${model}"
+    ollama pull "${model}"
+  fi
+done
+
+# ------------------------------------------------------------
+# 6. Deploy application
 # ------------------------------------------------------------
 
 echo "==> Deploying application to ${INSTALL_DIR}"
-
 rm -rf "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}"
 cp -r . "${INSTALL_DIR}"
 
 # ------------------------------------------------------------
-# 5. Validate required files
+# 7. Validate required files
 # ------------------------------------------------------------
 
-if [[ ! -f "${INSTALL_DIR}/config.yaml" ]]; then
-  echo "ERROR: config.yaml not found in ${INSTALL_DIR}"
-  exit 1
-fi
-
-if [[ ! -f "${INSTALL_DIR}/backend/ai_api/main.py" ]]; then
-  echo "ERROR: backend/ai_api/main.py not found"
-  exit 1
-fi
-
-if [[ ! -f "${INSTALL_DIR}/pi-ai-stack.service" ]]; then
-  echo "ERROR: pi-ai-stack.service not found"
-  exit 1
-fi
+[[ -f "${INSTALL_DIR}/config.yaml" ]] || { echo "ERROR: config.yaml missing"; exit 1; }
+[[ -f "${INSTALL_DIR}/backend/requirements.txt" ]] || { echo "ERROR: backend/requirements.txt missing"; exit 1; }
+[[ -f "${INSTALL_DIR}/pi-ai-stack.service" ]] || { echo "ERROR: pi-ai-stack.service missing"; exit 1; }
 
 # ------------------------------------------------------------
-# 6. Runtime directories
+# 8. Runtime directories
 # ------------------------------------------------------------
 
-echo "==> Creating runtime directories"
 mkdir -p "${INSTALL_DIR}/data"
 
 # ------------------------------------------------------------
-# 7. Python virtual environment
+# 9. Python virtual environment
 # ------------------------------------------------------------
 
 echo "==> Setting up Python virtual environment"
-
 VENV_DIR="${INSTALL_DIR}/backend/.venv"
 python3 -m venv "${VENV_DIR}"
 
 "${VENV_DIR}/bin/pip" install --upgrade pip wheel setuptools
-
-REQ_FILE="${INSTALL_DIR}/backend/requirements.txt"
-if [[ ! -f "${REQ_FILE}" ]]; then
-  echo "ERROR: backend/requirements.txt not found"
-  exit 1
-fi
-
-"${VENV_DIR}/bin/pip" install -r "${REQ_FILE}"
+"${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt"
 
 # ------------------------------------------------------------
-# 8. Install systemd service
+# 10. Install systemd service (backend)
 # ------------------------------------------------------------
 
-echo "==> Installing Pi AI Stack systemd service"
-
+echo "==> Installing backend systemd service"
 cp "${INSTALL_DIR}/pi-ai-stack.service" "${SERVICE_FILE}"
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 9. Configure Nginx
+# 11. Configure Nginx (mandatory)
 # ------------------------------------------------------------
 
 echo "==> Configuring Nginx"
@@ -165,30 +179,35 @@ nginx -t
 systemctl enable nginx
 
 # ------------------------------------------------------------
-# 10. Start services
+# 12. Start services
 # ------------------------------------------------------------
 
 echo "==> Starting services"
-
 systemctl restart nginx
 systemctl restart "${SERVICE_NAME}"
 
 sleep 2
 
-if ! systemctl is-active --quiet nginx; then
+systemctl is-active --quiet ollama || {
+  echo "ERROR: Ollama failed to start"
+  journalctl -u ollama -n 50 --no-pager
+  exit 1
+}
+
+systemctl is-active --quiet nginx || {
   echo "ERROR: Nginx failed to start"
   journalctl -u nginx -n 50 --no-pager
   exit 1
-fi
+}
 
-if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
-  echo "ERROR: Pi AI Stack service failed to start"
+systemctl is-active --quiet "${SERVICE_NAME}" || {
+  echo "ERROR: Pi AI Stack backend failed to start"
   journalctl -u "${SERVICE_NAME}" -n 50 --no-pager
   exit 1
-fi
+}
 
 # ------------------------------------------------------------
-# 11. Final output
+# 13. Final output
 # ------------------------------------------------------------
 
 echo
@@ -199,5 +218,6 @@ echo "API:     http://<raspberry-ip>/v1/"
 echo
 echo "Logs:"
 echo "  Backend: journalctl -u ${SERVICE_NAME} -f"
+echo "  Ollama:  journalctl -u ollama -f"
 echo "  Nginx:   journalctl -u nginx -f"
 echo
