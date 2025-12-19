@@ -1,7 +1,8 @@
 from __future__ import annotations
 from time import perf_counter
 from fastapi import APIRouter, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response
+import base64
 
 from ai_api.exceptions import ClientDisconnected
 from ai_api.observability.metrics import metrics
@@ -22,6 +23,12 @@ class MP3Streamer:
     def encode(self, pcm_bytes: bytes) -> bytes:
         return self.encoder.encode(pcm_bytes)
 
+    def flush(self) -> bytes:
+        try:
+            return self.encoder.flush()
+        except Exception:
+            return b""
+
 def _disconnected(req: Request) -> bool:
     try:
         return req.is_disconnected()  # type: ignore
@@ -36,6 +43,10 @@ async def tts(req: Request):
     body = await req.json()
     text = body.get("input", "")
     fmt = body.get("response_format", cfg.tts.default_format)
+    # compatibility flags
+    stream_mode = body.get("stream", True)
+    # output: 'binary' (raw audio) or 'base64' (JSON with base64 audio)
+    output_mode = body.get("output", "binary")
 
     metrics.inc("tts_requests_total")
     metrics.inc(f"tts_format_count_{fmt}")
@@ -94,11 +105,42 @@ async def tts(req: Request):
             piper.terminate()
             if fmt == "opus":
                 enc.terminate()
+            elif fmt == "mp3":
+                # ensure encoder emits final bytes
+                try:
+                    tail = enc.flush()
+                    if tail:
+                        bytes_sent += len(tail)
+                        yield tail
+                except Exception:
+                    pass
             metrics.inc("tts_audio_bytes_streamed_total", bytes_sent)
             metrics.observe_ms("tts_duration_ms", (perf_counter() - t0) * 1000)
 
     headers = {"X-Audio-Sample-Rate": str(cfg.tts.sample_rate), "X-Audio-Format": fmt}
-    return StreamingResponse(stream(), media_type=media_type, headers=headers)
+
+    if stream_mode:
+        return StreamingResponse(stream(), media_type=media_type, headers=headers)
+
+    # non-streaming: accumulate all chunks and return single response
+    chunks: list[bytes] = []
+    try:
+        for c in stream():
+            chunks.append(c)
+    except ClientDisconnected:
+        return JSONResponse({"error": "client disconnected"}, status_code=499)
+    except Exception:
+        raise
+
+    content = b"".join(chunks)
+
+    if output_mode == "base64":
+        payload = {"audio": base64.b64encode(content).decode("ascii")}
+        return JSONResponse(payload, headers=headers)
+
+    # set Content-Length for non-streaming responses (helps browsers/players)
+    headers["Content-Length"] = str(len(content))
+    return Response(content=content, media_type=media_type, headers=headers)
 
 @router.post("/v1/audio/transcriptions")
 async def stt(
