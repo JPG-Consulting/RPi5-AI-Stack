@@ -122,7 +122,6 @@ apt-get install -y \
   ffmpeg \
   curl \
   ca-certificates \
-  piper \
   nginx
 
 # ------------------------------------------------------------

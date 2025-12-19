@@ -23,7 +23,7 @@ class SttCfg(BaseModel):
     whisper: WhisperModelCfg = WhisperModelCfg()
 
 class PiperCfg(BaseModel):
-    binary: str = "/usr/bin/piper"
+    binary: str = "/opt/pi-ai-stack/backend/.venv/bin/piper-tts"
     model: str
 
 class TtsCfg(BaseModel):
