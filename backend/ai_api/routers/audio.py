@@ -28,9 +28,9 @@ class MP3Streamer:
         except Exception:
             return b""
 
-def _disconnected(req: Request) -> bool:
+async def _disconnected(req: Request) -> bool:
     try:
-        return req.is_disconnected()  # type: ignore
+        return await req.is_disconnected()  # type: ignore
     except TypeError:
         return False
 
@@ -66,14 +66,14 @@ async def tts(req: Request):
     else:
         return JSONResponse({"error": f"Unsupported format: {fmt}"}, status_code=400)
 
-    def stream():
+    async def stream():
         nonlocal bytes_sent, cancelled
         try:
             piper.write(text)
 
             if fmt == "opus":
                 for pcm in piper.read_pcm():
-                    if _disconnected(req):
+                    if await _disconnected(req):
                         raise ClientDisconnected()
                     enc.write(pcm)
                 enc.close()
@@ -82,7 +82,7 @@ async def tts(req: Request):
                     yield ogg
             else:
                 for pcm in piper.read_pcm():
-                    if _disconnected(req):
+                    if await _disconnected(req):
                         raise ClientDisconnected()
                     if enc is None:
                         bytes_sent += len(pcm)
@@ -119,7 +119,7 @@ async def tts(req: Request):
     # OpenAI-compatible response: return binary audio with Content-Type and Content-Length
     chunks: list[bytes] = []
     try:
-        for c in stream():
+        async for c in stream():
             chunks.append(c)
     except ClientDisconnected:
         return JSONResponse({"error": "client disconnected"}, status_code=499)
