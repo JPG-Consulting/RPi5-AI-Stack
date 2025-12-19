@@ -29,7 +29,6 @@ class PiperCfg(BaseModel):
 class TtsCfg(BaseModel):
     engine: str = "piper"
     default_format: str = "opus"
-    sample_rate: int = 22050
     piper: PiperCfg
 
 class ConversationCfg(BaseModel):

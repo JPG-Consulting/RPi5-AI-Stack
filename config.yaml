@@ -16,7 +16,6 @@ stt:
 tts:
   engine: piper
   default_format: opus
-  sample_rate: 22050
   piper:
     binary: /opt/pi-ai-stack/backend/.venv/bin/piper
     model: /opt/pi-ai-stack/models/es_ES-mls_10246-low.onnx
