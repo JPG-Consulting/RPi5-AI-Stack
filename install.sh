@@ -26,9 +26,15 @@ OLLAMA_MODELS=(
 # ------------------------------------------------------------
 
 ollama_is_healthy() {
+  # 1) The command exists
   command -v ollama >/dev/null 2>&1 || return 1
+
+  # 2) The command works
   ollama version >/dev/null 2>&1 || return 1
-  systemctl list-unit-files | grep -q '^ollama.service' || return 1
+
+  # 3) API responds
+  curl -s --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || return 1
+
   return 0
 }
 
