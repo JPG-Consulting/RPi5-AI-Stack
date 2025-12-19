@@ -18,7 +18,7 @@ tts:
   default_format: opus
   sample_rate: 22050
   piper:
-    binary: /opt/pi-ai-stack/backend/.venv/bin/piper-tts
+    binary: /opt/pi-ai-stack/backend/.venv/bin/piper
     model: /opt/pi-ai-stack/models/es_ES-voice.onnx
 
 conversation:
