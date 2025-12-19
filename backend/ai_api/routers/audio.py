@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 
-from ai_api.config import get_config
+from ai_api.config import load_config
 from ai_api.tts_engine import PiperProcess
 from ai_api.stt.whisper_engine import WhisperEngine
 
@@ -25,7 +25,7 @@ async def tts(req: Request):
     response_format = body.get("response_format", "mp3")
     stream = body.get("stream", False)
 
-    cfg = get_config()
+    cfg = load_config()
 
     if cfg.tts.engine != "piper":
         raise HTTPException(status_code=400, detail="TTS engine not enabled")
@@ -37,7 +37,7 @@ async def tts(req: Request):
     )
 
     # -------------------------------------------------
-    # NON-STREAMING MODE (browser-safe, OpenAI-like)
+    # NON-STREAMING MODE (browser-safe)
     # -------------------------------------------------
     if not stream:
         try:
@@ -65,7 +65,7 @@ async def tts(req: Request):
         )
 
     # -------------------------------------------------
-    # STREAMING MODE (advanced clients / embedded)
+    # STREAMING MODE (advanced clients)
     # -------------------------------------------------
     async def audio_stream():
         try:
@@ -106,7 +106,7 @@ async def transcriptions(
     model: str | None = None,
     language: str | None = None,
 ):
-    cfg = get_config()
+    cfg = load_config()
 
     if cfg.stt.engine != "whisper":
         raise HTTPException(status_code=400, detail="STT engine not enabled")
@@ -124,7 +124,6 @@ async def transcriptions(
     finally:
         await file.close()
 
-    # OpenAI-compatible response
     return JSONResponse({
         "text": text
     })
