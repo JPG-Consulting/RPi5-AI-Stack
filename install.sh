@@ -21,6 +21,13 @@ OLLAMA_MODELS=(
   "nomic-embed-text"
 )
 
+PIPER_MODEL_DIR="${INSTALL_DIR}/models"
+PIPER_MODEL_BASENAME="es_ES-mls_10246-low"
+PIPER_MODEL_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx"
+PIPER_MODEL_CONFIG_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx.json"
+PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/mls_10246/low/${PIPER_MODEL_BASENAME}.onnx"
+PIPER_MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/mls_10246/low/${PIPER_MODEL_BASENAME}.onnx.json"
+
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
@@ -79,6 +86,48 @@ wait_for_ollama_api() {
 
   echo "==> Ollama API is available"
   return 0
+}
+
+download_with_retries() {
+  local url="$1"
+  local dest="$2"
+  local max_attempts=5
+  local attempt=1
+
+  while (( attempt <= max_attempts )); do
+    echo "==> Downloading ${url} (attempt ${attempt}/${max_attempts})"
+    if curl -fL --retry 3 --retry-delay 2 -o "${dest}" "${url}"; then
+      return 0
+    fi
+
+    echo "!! Download failed for ${url}"
+    attempt=$((attempt + 1))
+    sleep $((attempt * 2))
+  done
+
+  echo "ERROR: Unable to download ${url} after ${max_attempts} attempts"
+  return 1
+}
+
+ensure_piper_asset() {
+  local url="$1"
+  local dest="$2"
+
+  if [[ -s "${dest}" ]]; then
+    echo "  - Piper asset already present: ${dest}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${dest}")"
+  local tmp
+  tmp="$(mktemp)"
+  if download_with_retries "${url}" "${tmp}"; then
+    mv "${tmp}" "${dest}"
+    return 0
+  fi
+
+  rm -f "${tmp}"
+  return 1
 }
 
 # ------------------------------------------------------------
@@ -174,10 +223,15 @@ cp -r . "${INSTALL_DIR}"
 [[ -f "${INSTALL_DIR}/pi-ai-stack.service" ]] || { echo "ERROR: pi-ai-stack.service missing"; exit 1; }
 
 # ------------------------------------------------------------
-# 8. Runtime directories
+# 8. Runtime directories & Piper model
 # ------------------------------------------------------------
 
 mkdir -p "${INSTALL_DIR}/data"
+mkdir -p "${PIPER_MODEL_DIR}"
+
+echo "==> Ensuring Piper TTS model assets"
+ensure_piper_asset "${PIPER_MODEL_URL}" "${PIPER_MODEL_PATH}"
+ensure_piper_asset "${PIPER_MODEL_CONFIG_URL}" "${PIPER_MODEL_CONFIG_PATH}"
 
 # ------------------------------------------------------------
 # 9. Python virtual environment

@@ -19,7 +19,7 @@ tts:
   sample_rate: 22050
   piper:
     binary: /opt/pi-ai-stack/backend/.venv/bin/piper
-    model: /opt/pi-ai-stack/models/es_ES-voice.onnx
+    model: /opt/pi-ai-stack/models/es_ES-mls_10246-low.onnx
 
 conversation:
   ttl_hours: 24
