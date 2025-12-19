@@ -26,16 +26,19 @@ OLLAMA_MODELS=(
 # ------------------------------------------------------------
 
 ollama_is_healthy() {
-  # 1) The command exists
   command -v ollama >/dev/null 2>&1 || return 1
-
-  # 2) The command works
   ollama version >/dev/null 2>&1 || return 1
 
-  # 3) API responds
-  curl -s --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || return 1
+  # API check with small retries to avoid systemd/startup race
+  local i
+  for i in {1..15}; do
+    if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
 
-  return 0
+  return 1
 }
 
 install_ollama() {
