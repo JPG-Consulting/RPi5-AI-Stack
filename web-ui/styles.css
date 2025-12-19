@@ -1,20 +1,19 @@
 :root {
-  --bg: #0b0f14;
-  --panel: #121826;
-  --panel2: #0f1522;
-  --text: #e6edf3;
-  --muted: #9aa7b2;
-  --accent: #3b82f6;
-  --shadow: rgba(0,0,0,0.35);
-  --border: rgba(255,255,255,0.08);
-  --radius: 16px;
-  --maxw: 980px;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  --bg: #ffffff;
+  --panel: #f7f7f8;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #10a37f;
+  --shadow: rgba(15, 23, 42, 0.08);
+  --border: #e5e7eb;
+  --radius: 18px;
+  --maxw: 960px;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: linear-gradient(180deg, #070a0f, #0b0f14);
+  background: var(--bg);
   color: var(--text);
 }
 .topbar {
@@ -26,36 +25,37 @@ body {
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
-  background: rgba(11,15,20,0.9);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(10px);
 }
 .brand { font-weight: 700; }
 .spacer { flex: 1; }
-.toggle { display: inline-flex; gap: 8px; color: var(--muted); user-select: none; }
+.toggle { display: inline-flex; gap: 8px; color: var(--muted); user-select: none; align-items: center; }
 .layout {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 18px 16px 24px;
+  padding: 18px 16px 28px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .chat {
-  background: rgba(18,24,38,0.55);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
-  min-height: calc(100vh - 220px);
-  box-shadow: 0 18px 50px var(--shadow);
+  padding: 18px 18px 8px;
+  min-height: calc(100vh - 240px);
+  box-shadow: 0 18px 40px var(--shadow);
   overflow: auto;
 }
 .msg {
   display: grid;
   gap: 6px;
-  padding: 12px;
+  padding: 12px 14px;
   margin: 10px 0;
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(15,21,34,0.55);
+  background: #ffffff;
+  box-shadow: 0 4px 14px var(--shadow);
 }
 .msg .role {
   font-size: 12px;
@@ -63,45 +63,53 @@ body {
   letter-spacing: 0.12em;
   color: var(--muted);
 }
-.msg.user { background: rgba(59,130,246,0.10); border-color: rgba(59,130,246,0.20); }
-.msg.assistant { background: rgba(18,24,38,0.65); }
-.msg .content { white-space: pre-wrap; line-height: 1.45; }
+.msg.user { background: #f0fdf4; border-color: #dcfce7; }
+.msg.assistant { background: #ffffff; }
+.msg .content { white-space: pre-wrap; line-height: 1.55; }
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  padding: 12px;
-  background: rgba(18,24,38,0.55);
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  padding: 14px;
+  background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 18px 50px var(--shadow);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 18px 40px var(--shadow);
+  align-items: center;
 }
 textarea {
   width: 100%;
   resize: none;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(10,14,22,0.7);
+  background: #f8fafc;
   color: var(--text);
-  padding: 12px;
+  padding: 12px 14px;
   outline: none;
   line-height: 1.4;
+  min-height: 60px;
 }
-textarea:focus { border-color: rgba(59,130,246,0.45); }
+textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(16,163,127,0.12); }
 .btn {
   border: 1px solid transparent;
   border-radius: 12px;
   padding: 10px 14px;
   cursor: pointer;
   font-weight: 600;
+  background: #f8fafc;
+  color: var(--text);
+  border-color: var(--border);
+  transition: transform 80ms ease, box-shadow 120ms ease;
 }
-.btn-primary { background: var(--accent); color: white; }
-.btn-secondary { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px var(--shadow); }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-secondary { background: #f8fafc; color: var(--text); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; transform: none; }
 .status { padding: 0 4px; color: var(--muted); font-size: 13px; }
 .hidden { display: none; }
 
 .btn.recording {
   background: #ef4444;
   color: white;
+  border-color: #ef4444;
 }

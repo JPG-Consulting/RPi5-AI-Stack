@@ -133,9 +133,22 @@ async function send() {
 
 // STT logic
 micBtn.addEventListener("click", async () => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus("El navegador no permite acceso al micrófono (requiere HTTPS)");
+    return;
+  }
+
   if (!recording) {
     // start recording
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      console.warn("Mic permissions denied or unavailable", e);
+      setStatus("No se pudo acceder al micrófono");
+      return;
+    }
+
     recordedChunks = [];
     mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
     mediaRecorder.ondataavailable = e => {
@@ -161,6 +174,7 @@ micBtn.addEventListener("click", async () => {
         console.warn("STT failed", e);
       } finally {
         setStatus("Listo");
+        stream.getTracks().forEach(t => t.stop());
       }
     };
 
