@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ai_api.exceptions import ClientDisconnected
 from ai_api.observability.metrics import metrics
-from ai_api.tts_engine import PiperProcess, OggOpusEncoder
+from ai_api.tts_engine import OggOpusEncoder, PiperProcess, resolve_voice_config
 from ai_api.stt_engine import WhisperSTT
 import lameenc
 
@@ -50,15 +50,21 @@ async def tts(req: Request):
     metrics.inc("tts_requests_total")
     metrics.inc(f"tts_format_count_{fmt}")
 
-    piper = PiperProcess(cfg.tts.piper.binary, cfg.tts.piper.model, cfg.tts.sample_rate)
+    voice_cfg = resolve_voice_config(cfg.tts.piper.model)
+    piper = PiperProcess(
+        cfg.tts.piper.binary,
+        cfg.tts.piper.model,
+        voice_cfg.sample_rate,
+        voice_cfg.config_path,
+    )
     bytes_sent = 0
     cancelled = False
 
     if fmt == "opus":
-        enc = OggOpusEncoder(cfg.tts.sample_rate)
+        enc = OggOpusEncoder(voice_cfg.sample_rate)
         media_type = "audio/ogg"
     elif fmt == "mp3":
-        enc = MP3Streamer(cfg.tts.sample_rate)
+        enc = MP3Streamer(voice_cfg.sample_rate)
         media_type = "audio/mpeg"
     elif fmt == "pcm":
         enc = None
