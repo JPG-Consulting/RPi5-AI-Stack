@@ -1,9 +1,9 @@
 def test_tts_pcm_stream(client):
     res = client.post(
         "/v1/audio/speech",
-        json={"input": "Hola", "response_format": "pcm"},
-        stream=True
+        json={"input": "Hola", "format": "pcm"},
     )
     assert res.status_code == 200
-    chunk = next(res.iter_bytes(), b"")
-    assert isinstance(chunk, (bytes, bytearray))
+    content = res.content
+    assert isinstance(content, (bytes, bytearray))
+    assert len(content) > 0

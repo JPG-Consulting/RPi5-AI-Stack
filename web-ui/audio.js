@@ -69,7 +69,7 @@ export class StreamingAudioPlayer {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, format: "opus" }),
       signal: this.abortController.signal
     });
     if (!resp.ok) throw new Error(`TTS_OPUS_FAILED_${resp.status}`);
@@ -101,7 +101,7 @@ export class StreamingAudioPlayer {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, response_format: "mp3" }),
+      body: JSON.stringify({ ...body, format: "mp3" }),
       signal: this.abortController.signal
     });
     if (!resp.ok) throw new Error(`TTS_MP3_FAILED_${resp.status}`);
@@ -116,10 +116,10 @@ export class StreamingAudioPlayer {
 
   async playWithFallback(url, body) {
     try {
-      await this.playOpusStream(url, { ...body, response_format: "opus" });
+      await this.playOpusStream(url, { ...body, format: "opus" });
     } catch (e) {
       console.warn("OPUS failed, falling back to MP3", e);
-      await this.playMp3(url, body);
+      await this.playMp3(url, { ...body, format: "mp3" });
     }
   }
 }

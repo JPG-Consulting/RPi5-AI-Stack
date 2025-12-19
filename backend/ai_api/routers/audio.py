@@ -1,8 +1,7 @@
 from __future__ import annotations
 from time import perf_counter
 from fastapi import APIRouter, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, JSONResponse, Response
-import base64
+from fastapi.responses import JSONResponse, Response
 
 from ai_api.exceptions import ClientDisconnected
 from ai_api.observability.metrics import metrics
@@ -42,11 +41,11 @@ async def tts(req: Request):
     cfg = app.state.cfg
     body = await req.json()
     text = body.get("input", "")
-    fmt = body.get("response_format", cfg.tts.default_format)
-    # compatibility flags
-    stream_mode = body.get("stream", True)
-    # output: 'binary' (raw audio) or 'base64' (JSON with base64 audio)
-    output_mode = body.get("output", "binary")
+    # OpenAI-compatible fields: input, model, voice, format
+    _model = body.get("model")   # accepted but not used by Piper
+    _voice = body.get("voice")   # accepted but not used by Piper
+    # prefer 'format' (OpenAI); fallback to server default
+    fmt = body.get("format", cfg.tts.default_format)
 
     metrics.inc("tts_requests_total")
     metrics.inc(f"tts_format_count_{fmt}")
@@ -117,28 +116,16 @@ async def tts(req: Request):
             metrics.inc("tts_audio_bytes_streamed_total", bytes_sent)
             metrics.observe_ms("tts_duration_ms", (perf_counter() - t0) * 1000)
 
-    headers = {"X-Audio-Sample-Rate": str(cfg.tts.sample_rate), "X-Audio-Format": fmt}
-
-    if stream_mode:
-        return StreamingResponse(stream(), media_type=media_type, headers=headers)
-
-    # non-streaming: accumulate all chunks and return single response
+    # OpenAI-compatible response: return binary audio with Content-Type and Content-Length
     chunks: list[bytes] = []
     try:
         for c in stream():
             chunks.append(c)
     except ClientDisconnected:
         return JSONResponse({"error": "client disconnected"}, status_code=499)
-    except Exception:
-        raise
 
     content = b"".join(chunks)
-
-    if output_mode == "base64":
-        payload = {"audio": base64.b64encode(content).decode("ascii")}
-        return JSONResponse(payload, headers=headers)
-
-    # set Content-Length for non-streaming responses (helps browsers/players)
+    headers: dict[str, str] = {}
     headers["Content-Length"] = str(len(content))
     return Response(content=content, media_type=media_type, headers=headers)
 
