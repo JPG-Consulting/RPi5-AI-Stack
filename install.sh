@@ -25,10 +25,9 @@ OLLAMA_MODELS=(
 # Helpers
 # ------------------------------------------------------------
 
-ollama_is_healthy() {
+ollama_is_installed() {
   command -v ollama >/dev/null 2>&1 || return 1
-  ollama version >/dev/null 2>&1 || return 1
-  systemctl list-unit-files | grep -q '^ollama.service' || return 1
+  [[ -f /etc/systemd/system/ollama.service ]] || return 1
   return 0
 }
 
@@ -39,14 +38,14 @@ install_ollama() {
   while (( attempt <= max_attempts )); do
     echo "==> Installing Ollama (attempt $attempt/$max_attempts)"
 
-    # Defensive cleanup of partial installs
+    # Cleanup partial installs
     systemctl stop ollama 2>/dev/null || true
     rm -f /usr/local/bin/ollama
-    rm -rf /usr/lib/ollama
+    rm -rf /usr/local/lib/ollama
     rm -rf /var/lib/ollama
 
     if curl -fsSL https://ollama.com/install.sh | sh; then
-      if ollama_is_healthy; then
+      if ollama_is_installed; then
         echo "==> Ollama installed successfully"
         return 0
       fi
@@ -59,6 +58,27 @@ install_ollama() {
 
   echo "ERROR: Ollama could not be installed after $max_attempts attempts"
   return 1
+}
+
+wait_for_ollama_api() {
+  local timeout=120
+  local waited=0
+
+  echo "==> Waiting for Ollama API to become available"
+
+  until curl -fsS --max-time 2 "${OLLAMA_API}/api/tags" >/dev/null 2>&1; do
+    sleep 2
+    waited=$((waited + 2))
+
+    if (( waited >= timeout )); then
+      echo "ERROR: Ollama API did not become available after ${timeout}s"
+      journalctl -u ollama -n 50 --no-pager || true
+      return 1
+    fi
+  done
+
+  echo "==> Ollama API is available"
+  return 0
 }
 
 # ------------------------------------------------------------
@@ -105,24 +125,21 @@ apt-get install -y \
   nginx
 
 # ------------------------------------------------------------
-# 4. Install Ollama (robust + idempotent)
+# 4. Ollama installation & startup (definitive)
 # ------------------------------------------------------------
 
-if ollama_is_healthy; then
-  echo "==> Ollama already installed and healthy"
+if ollama_is_installed; then
+  echo "==> Ollama already installed"
 else
-  echo "==> Ollama missing or corrupted, installing"
   install_ollama || exit 1
 fi
 
 echo "==> Enabling and starting Ollama"
+systemctl daemon-reload
 systemctl enable ollama
 systemctl start ollama
 
-echo "==> Waiting for Ollama API"
-until curl -s "${OLLAMA_API}/api/tags" >/dev/null; do
-  sleep 1
-done
+wait_for_ollama_api || exit 1
 
 # ------------------------------------------------------------
 # 5. Pull required Ollama models
@@ -183,7 +200,7 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 11. Configure Nginx (mandatory)
+# 11. Configure Nginx
 # ------------------------------------------------------------
 
 echo "==> Configuring Nginx"
