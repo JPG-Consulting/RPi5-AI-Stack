@@ -62,9 +62,9 @@ def _spoken_meta_summary(con, conversation_id: str, n: int) -> str:
         return "Hemos intercambiado algunos mensajes, pero no hay preguntas claras todavía."
     return "Hemos estado hablando de: " + "; ".join(topics[-min(len(topics), 5):]) + "."
 
-def _disconnected(req: Request) -> bool:
+async def _disconnected(req: Request) -> bool:
     try:
-        return req.is_disconnected()  # type: ignore
+        return await req.is_disconnected()  # type: ignore
     except TypeError:
         return False
 
@@ -136,13 +136,13 @@ async def chat_completions(req: Request, background: BackgroundTasks):
         run_facts_pipeline(con, cfg, user_subject, user_text, extractor, l2)
 
     if stream:
-        def sse_stream():
+        async def sse_stream():
             try:
                 full_parts = []
                 with requests.post(ollama_url, json={"model": cfg.llm.ollama.model, "messages": ctx, "stream": True}, stream=True, timeout=cfg.llm.ollama.timeout_seconds) as r:
                     r.raise_for_status()
                     for line in r.iter_lines():
-                        if _disconnected(req):
+                        if await _disconnected(req):
                             raise ClientDisconnected()
                         if not line:
                             continue
