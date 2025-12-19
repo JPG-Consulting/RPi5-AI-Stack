@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from time import perf_counter
 from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, Response
@@ -10,6 +11,7 @@ from ai_api.stt_engine import WhisperSTT
 import lameenc
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class MP3Streamer:
     def __init__(self, sample_rate: int):
@@ -53,6 +55,7 @@ async def tts(req: Request):
     piper = PiperProcess(cfg.tts.piper.binary, cfg.tts.piper.model, cfg.tts.sample_rate)
     bytes_sent = 0
     cancelled = False
+    piper_error = ""
 
     if fmt == "opus":
         enc = OggOpusEncoder(cfg.tts.sample_rate)
@@ -66,65 +69,84 @@ async def tts(req: Request):
     else:
         return JSONResponse({"error": f"Unsupported format: {fmt}"}, status_code=400)
 
-    def stream():
-        nonlocal bytes_sent, cancelled
+    pcm_chunks: list[bytes] = []
+    audio_chunks: list[bytes] = []
+    try:
         try:
             piper.write(text)
 
+            for pcm in piper.read_pcm():
+                if _disconnected(req):
+                    raise ClientDisconnected()
+                pcm_chunks.append(pcm)
+
+            rc = piper.wait()
+            if rc not in (0, None):
+                piper_error = piper.read_error()
+                raise RuntimeError(f"Piper exited with code {rc}")
+
+            if not pcm_chunks:
+                piper_error = piper_error or piper.read_error()
+                raise RuntimeError("Piper produced no audio")
+
             if fmt == "opus":
-                for pcm in piper.read_pcm():
-                    if _disconnected(req):
-                        raise ClientDisconnected()
+                for pcm in pcm_chunks:
                     enc.write(pcm)
                 enc.close()
                 for ogg in enc.read():
                     bytes_sent += len(ogg)
-                    yield ogg
+                    audio_chunks.append(ogg)
+            elif fmt == "mp3":
+                for pcm in pcm_chunks:
+                    out = enc.encode(pcm)
+                    if out:
+                        bytes_sent += len(out)
+                        audio_chunks.append(out)
+                try:
+                    tail = enc.flush()
+                except Exception:
+                    tail = b""
+                if tail:
+                    bytes_sent += len(tail)
+                    audio_chunks.append(tail)
             else:
-                for pcm in piper.read_pcm():
-                    if _disconnected(req):
-                        raise ClientDisconnected()
-                    if enc is None:
-                        bytes_sent += len(pcm)
-                        yield pcm
-                    else:
-                        out = enc.encode(pcm)
-                        if out:
-                            bytes_sent += len(out)
-                            yield out
+                for pcm in pcm_chunks:
+                    bytes_sent += len(pcm)
+                    audio_chunks.append(pcm)
 
             metrics.inc("tts_success_total")
         except ClientDisconnected:
             cancelled = True
             metrics.inc("tts_cancelled_total")
-        except Exception:
+        except Exception as exc:
             metrics.inc("tts_error_total")
-            raise
+            if not piper_error:
+                piper_error = piper.read_error()
+            if piper_error:
+                logger.error("Piper TTS failed: %s", piper_error)
+            raise RuntimeError(piper_error or str(exc))
         finally:
             piper.terminate()
             if fmt == "opus":
                 enc.terminate()
-            elif fmt == "mp3":
-                # ensure encoder emits final bytes
-                try:
-                    tail = enc.flush()
-                    if tail:
-                        bytes_sent += len(tail)
-                        yield tail
-                except Exception:
-                    pass
             metrics.inc("tts_audio_bytes_streamed_total", bytes_sent)
             metrics.observe_ms("tts_duration_ms", (perf_counter() - t0) * 1000)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "Gtk not available" in msg or "Gtk" in msg:
+            msg = (
+                "Piper binary requires Gtk. Use a headless CLI build (e.g., piper-tts) "
+                "and set tts.piper.binary to that path."
+            )
+        return JSONResponse({"error": msg}, status_code=500)
 
-    # OpenAI-compatible response: return binary audio with Content-Type and Content-Length
-    chunks: list[bytes] = []
-    try:
-        for c in stream():
-            chunks.append(c)
-    except ClientDisconnected:
+    if cancelled:
         return JSONResponse({"error": "client disconnected"}, status_code=499)
 
-    content = b"".join(chunks)
+    content = b"".join(audio_chunks)
+    if not content:
+        return JSONResponse({"error": "TTS engine returned no audio"}, status_code=500)
+
     headers: dict[str, str] = {}
     headers["Content-Length"] = str(len(content))
     return Response(content=content, media_type=media_type, headers=headers)
