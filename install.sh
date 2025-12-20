@@ -22,11 +22,11 @@ OLLAMA_MODELS=(
 )
 
 PIPER_MODEL_DIR="${INSTALL_DIR}/models"
-PIPER_MODEL_BASENAME="es_ES-mls_10246-low"
+PIPER_MODEL_BASENAME="es_ES-carlfm-low"
 PIPER_MODEL_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx"
 PIPER_MODEL_CONFIG_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx.json"
-PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/mls_10246/low/${PIPER_MODEL_BASENAME}.onnx"
-PIPER_MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/mls_10246/low/${PIPER_MODEL_BASENAME}.onnx.json"
+PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/low/${PIPER_MODEL_BASENAME}.onnx"
+PIPER_MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/low/${PIPER_MODEL_BASENAME}.onnx.json"
 
 # ------------------------------------------------------------
 # Helpers
