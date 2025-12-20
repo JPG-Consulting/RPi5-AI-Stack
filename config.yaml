@@ -18,7 +18,7 @@ tts:
   default_format: opus
   piper:
     binary: /opt/pi-ai-stack/backend/.venv/bin/piper
-    model: /opt/pi-ai-stack/models/es_ES-carlfm-low.onnx
+    model: /opt/pi-ai-stack/models/es_ES-carlfm-x_low.onnx
 
 conversation:
   ttl_hours: 24
