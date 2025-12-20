@@ -22,11 +22,19 @@ OLLAMA_MODELS=(
 )
 
 PIPER_MODEL_DIR="${INSTALL_DIR}/models"
-PIPER_MODEL_BASENAME="es_ES-carlfm-low"
+PIPER_MODEL_BASENAME="es_ES-carlfm-x_low"
 PIPER_MODEL_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx"
 PIPER_MODEL_CONFIG_PATH="${PIPER_MODEL_DIR}/${PIPER_MODEL_BASENAME}.onnx.json"
-PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/low/${PIPER_MODEL_BASENAME}.onnx"
-PIPER_MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/low/${PIPER_MODEL_BASENAME}.onnx.json"
+PIPER_MODEL_URLS=(
+  "https://github.com/rhasspy/piper-voices/releases/download/v1.0.0/${PIPER_MODEL_BASENAME}.onnx"
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/carlfm/x_low/${PIPER_MODEL_BASENAME}.onnx"
+  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/${PIPER_MODEL_BASENAME}.onnx"
+)
+PIPER_MODEL_CONFIG_URLS=(
+  "https://github.com/rhasspy/piper-voices/releases/download/v1.0.0/${PIPER_MODEL_BASENAME}.onnx.json"
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/carlfm/x_low/${PIPER_MODEL_BASENAME}.onnx.json"
+  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/${PIPER_MODEL_BASENAME}.onnx.json"
+)
 
 # ------------------------------------------------------------
 # Helpers
@@ -130,6 +138,32 @@ ensure_piper_asset() {
   return 1
 }
 
+ensure_piper_asset_with_fallback() {
+  local urls_name="$1"
+  local dest="$2"
+  local -n urls_ref="${urls_name}"
+
+  if [[ -s "${dest}" ]]; then
+    echo "  - Piper asset already present: ${dest}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${dest}")"
+  local tmp
+  tmp="$(mktemp)"
+  for url in "${urls_ref[@]}"; do
+    echo "==> Attempting Piper asset download from ${url}"
+    if download_with_retries "${url}" "${tmp}"; then
+      mv "${tmp}" "${dest}"
+      return 0
+    fi
+  done
+
+  rm -f "${tmp}"
+  echo "ERROR: Unable to download Piper asset to ${dest}"
+  return 1
+}
+
 # ------------------------------------------------------------
 # 1. Preconditions
 # ------------------------------------------------------------
@@ -230,8 +264,8 @@ mkdir -p "${INSTALL_DIR}/data"
 mkdir -p "${PIPER_MODEL_DIR}"
 
 echo "==> Ensuring Piper TTS model assets"
-ensure_piper_asset "${PIPER_MODEL_URL}" "${PIPER_MODEL_PATH}"
-ensure_piper_asset "${PIPER_MODEL_CONFIG_URL}" "${PIPER_MODEL_CONFIG_PATH}"
+ensure_piper_asset_with_fallback PIPER_MODEL_URLS "${PIPER_MODEL_PATH}"
+ensure_piper_asset_with_fallback PIPER_MODEL_CONFIG_URLS "${PIPER_MODEL_CONFIG_PATH}"
 
 # ------------------------------------------------------------
 # 9. Python virtual environment
