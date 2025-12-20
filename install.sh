@@ -14,6 +14,10 @@ NGINX_SITE="pi-ai-stack"
 NGINX_AVAILABLE="/etc/nginx/sites-available/${NGINX_SITE}"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${NGINX_SITE}"
 
+SSL_DIR="/etc/pi-ai-stack/ssl"
+SSL_CERT="${SSL_DIR}/pi-ai-stack.crt"
+SSL_KEY="${SSL_DIR}/pi-ai-stack.key"
+
 OLLAMA_API="http://127.0.0.1:11434"
 OLLAMA_MODELS=(
   "llama3.2:3b"
@@ -164,6 +168,24 @@ ensure_piper_asset_with_fallback() {
   return 1
 }
 
+ensure_self_signed_cert() {
+  mkdir -p "${SSL_DIR}"
+
+  if [[ -s "${SSL_CERT}" && -s "${SSL_KEY}" ]]; then
+    echo "==> SSL certificate already present at ${SSL_CERT}"
+    return 0
+  fi
+
+  echo "==> Generating self-signed SSL certificate"
+  openssl req -x509 -nodes -days 3650 \
+    -newkey rsa:4096 \
+    -keyout "${SSL_KEY}" \
+    -out "${SSL_CERT}" \
+    -subj "/CN=pi-ai-stack"
+
+  chmod 600 "${SSL_KEY}"
+}
+
 # ------------------------------------------------------------
 # 1. Preconditions
 # ------------------------------------------------------------
@@ -202,6 +224,7 @@ apt-get install -y \
   pkg-config \
   libffi-dev \
   libssl-dev \
+  openssl \
   ffmpeg \
   curl \
   ca-certificates \
@@ -249,7 +272,13 @@ mkdir -p "${INSTALL_DIR}"
 cp -r . "${INSTALL_DIR}"
 
 # ------------------------------------------------------------
-# 7. Validate required files
+# 7. TLS assets
+# ------------------------------------------------------------
+
+ensure_self_signed_cert
+
+# ------------------------------------------------------------
+# 8. Validate required files
 # ------------------------------------------------------------
 
 [[ -f "${INSTALL_DIR}/config.yaml" ]] || { echo "ERROR: config.yaml missing"; exit 1; }
@@ -257,7 +286,7 @@ cp -r . "${INSTALL_DIR}"
 [[ -f "${INSTALL_DIR}/pi-ai-stack.service" ]] || { echo "ERROR: pi-ai-stack.service missing"; exit 1; }
 
 # ------------------------------------------------------------
-# 8. Runtime directories & Piper model
+# 9. Runtime directories & Piper model
 # ------------------------------------------------------------
 
 mkdir -p "${INSTALL_DIR}/data"
@@ -268,7 +297,7 @@ ensure_piper_asset_with_fallback PIPER_MODEL_URLS "${PIPER_MODEL_PATH}"
 ensure_piper_asset_with_fallback PIPER_MODEL_CONFIG_URLS "${PIPER_MODEL_CONFIG_PATH}"
 
 # ------------------------------------------------------------
-# 9. Python virtual environment
+# 10. Python virtual environment
 # ------------------------------------------------------------
 
 echo "==> Setting up Python virtual environment"
@@ -279,7 +308,7 @@ python3 -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt"
 
 # ------------------------------------------------------------
-# 10. Install backend systemd service
+# 11. Install backend systemd service
 # ------------------------------------------------------------
 
 echo "==> Installing backend systemd service"
@@ -288,7 +317,7 @@ systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
 
 # ------------------------------------------------------------
-# 11. Configure Nginx
+# 12. Configure Nginx
 # ------------------------------------------------------------
 
 echo "==> Configuring Nginx"
@@ -296,7 +325,15 @@ echo "==> Configuring Nginx"
 cat > "${NGINX_AVAILABLE}" <<'EOF'
 server {
     listen 80;
+    listen 443 ssl http2;
     server_name _;
+
+    ssl_certificate /etc/pi-ai-stack/ssl/pi-ai-stack.crt;
+    ssl_certificate_key /etc/pi-ai-stack/ssl/pi-ai-stack.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
     root /opt/pi-ai-stack/web-ui;
     index index.html;
@@ -323,7 +360,7 @@ nginx -t
 systemctl enable nginx
 
 # ------------------------------------------------------------
-# 12. Start services
+# 13. Start services
 # ------------------------------------------------------------
 
 echo "==> Starting services"
@@ -351,14 +388,14 @@ systemctl is-active --quiet "${SERVICE_NAME}" || {
 }
 
 # ------------------------------------------------------------
-# 13. Final output
+# 14. Final output
 # ------------------------------------------------------------
 
 echo
 echo "Pi AI Stack installed successfully."
 echo
-echo "Web UI:  http://<raspberry-ip>/"
-echo "API:     http://<raspberry-ip>/v1/"
+echo "Web UI:  http://<raspberry-ip>/  or  https://<raspberry-ip>/"
+echo "API:     http://<raspberry-ip>/v1/  or  https://<raspberry-ip>/v1/"
 echo
 echo "Logs:"
 echo "  Backend: journalctl -u ${SERVICE_NAME} -f"
