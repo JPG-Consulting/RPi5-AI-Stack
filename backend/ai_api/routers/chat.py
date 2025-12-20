@@ -1,5 +1,6 @@
 from __future__ import annotations
-import json, uuid, requests
+import json, uuid
+import httpx
 from time import perf_counter
 from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -139,22 +140,23 @@ async def chat_completions(req: Request, background: BackgroundTasks):
         async def sse_stream():
             try:
                 full_parts = []
-                with requests.post(ollama_url, json={"model": cfg.llm.ollama.model, "messages": ctx, "stream": True}, stream=True, timeout=cfg.llm.ollama.timeout_seconds) as r:
-                    r.raise_for_status()
-                    for line in r.iter_lines():
-                        if await _disconnected(req):
-                            raise ClientDisconnected()
-                        if not line:
-                            continue
-                        data = json.loads(line.decode("utf-8"))
-                        if data.get("done"):
-                            yield "data: [DONE]\n\n"
-                            break
-                        delta = (data.get("message") or {}).get("content") or ""
-                        if delta:
-                            full_parts.append(delta)
-                            payload = {"choices": [{"delta": {"content": delta}}]}
-                            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                async with httpx.AsyncClient(timeout=cfg.llm.ollama.timeout_seconds) as client:
+                    async with client.stream("POST", ollama_url, json={"model": cfg.llm.ollama.model, "messages": ctx, "stream": True}) as r:
+                        r.raise_for_status()
+                        async for line in r.aiter_lines():
+                            if await _disconnected(req):
+                                raise ClientDisconnected()
+                            if not line:
+                                continue
+                            data = json.loads(line)
+                            if data.get("done"):
+                                yield "data: [DONE]\n\n"
+                                break
+                            delta = (data.get("message") or {}).get("content") or ""
+                            if delta:
+                                full_parts.append(delta)
+                                payload = {"choices": [{"delta": {"content": delta}}]}
+                                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
                 full = "".join(full_parts).strip()
                 if full:
@@ -177,9 +179,10 @@ async def chat_completions(req: Request, background: BackgroundTasks):
         return StreamingResponse(sse_stream(), media_type="text/event-stream", headers={"X-Conversation-Id": conversation_id})
 
     # non-stream
-    r = requests.post(ollama_url, json={"model": cfg.llm.ollama.model, "messages": ctx, "stream": False}, timeout=cfg.llm.ollama.timeout_seconds)
-    r.raise_for_status()
-    text = ((r.json().get("message") or {}).get("content") or "").strip()
+    async with httpx.AsyncClient(timeout=cfg.llm.ollama.timeout_seconds) as client:
+        r = await client.post(ollama_url, json={"model": cfg.llm.ollama.model, "messages": ctx, "stream": False})
+        r.raise_for_status()
+        text = ((r.json().get("message") or {}).get("content") or "").strip()
 
     with tx(con) as cur:
         cur.execute("INSERT INTO messages (conversation_id, role, content, created_at, meta_json) VALUES (?, ?, ?, ?, ?)",
