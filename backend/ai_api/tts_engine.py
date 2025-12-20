@@ -48,19 +48,28 @@ def resolve_voice_config(model_path: str, fallback_sample_rate: int = DEFAULT_SA
     """Resolve Piper config path (if JSON exists) and effective sample rate for encoders.
 
     Falls back to `fallback_sample_rate` when metadata is missing or lacks a sample rate.
+    Tries both `<model>.json` and `<model>.onnx.json` because Piper models are commonly
+    distributed with the latter naming scheme.
     """
 
-    meta_path = Path(model_path).with_suffix(".json")
-    metadata: dict[str, Any] | None = None
+    model = Path(model_path)
+    candidate_meta_paths = [model.with_suffix(".json"), Path(f"{model_path}.json")]
 
-    if meta_path.exists():
+    metadata: dict[str, Any] | None = None
+    used_meta_path: Path | None = None
+
+    for meta_path in candidate_meta_paths:
+        if not meta_path.exists():
+            continue
         try:
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+            used_meta_path = meta_path
+            break
         except Exception:
             logger.warning("Failed to parse Piper metadata at %s; continuing without it", meta_path)
 
     sample_rate = _extract_sample_rate(metadata) if metadata else None
-    config_path = str(meta_path) if metadata is not None else None
+    config_path = str(used_meta_path) if metadata is not None and used_meta_path else None
 
     if sample_rate:
         return VoiceConfig(config_path=config_path, sample_rate=sample_rate)
