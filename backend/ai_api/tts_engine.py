@@ -7,6 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,33 @@ def resolve_voice_config(model_path: str, fallback_sample_rate: int = DEFAULT_SA
     return VoiceConfig(config_path=config_path, sample_rate=fallback_sample_rate)
 
 
+def sanitize_tts_text(text: str) -> str:
+    """Normalize and strip characters Piper cannot pronounce reliably.
+
+    Removes control/zero-width characters, collapses whitespace, and trims the
+    result so we do not feed garbage tokens that sound like noise.
+    """
+
+    normalized = unicodedata.normalize("NFKC", text)
+    cleaned_chars: list[str] = []
+
+    for ch in normalized:
+        if ch in {"\n", "\r", "\t"}:
+            cleaned_chars.append(" ")
+            continue
+
+        if unicodedata.category(ch).startswith("C"):
+            # Drop control characters and zero-width marks that surface as noise
+            # in Piper output.
+            continue
+
+        cleaned_chars.append(ch)
+
+    cleaned = "".join(cleaned_chars)
+    collapsed = " ".join(cleaned.split())
+    return collapsed.strip()
+
+
 class PiperProcess:
     def __init__(self, binary: str, model: str, sample_rate: int, config_path: str | None):
         cmd = [binary, "--model", model, "--output-raw"]
@@ -83,7 +111,8 @@ class PiperProcess:
 
     def write(self, text: str):
         assert self.proc.stdin
-        self.proc.stdin.write(text.encode("utf-8"))
+        payload = text if text.endswith("\n") else f"{text}\n"
+        self.proc.stdin.write(payload.encode("utf-8"))
         self.proc.stdin.close()
 
     def read_pcm(self, chunk_size: int = 4096):

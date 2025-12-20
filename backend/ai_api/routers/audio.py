@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ai_api.exceptions import ClientDisconnected
 from ai_api.observability.metrics import metrics
-from ai_api.tts_engine import OggOpusEncoder, PiperProcess, resolve_voice_config
+from ai_api.tts_engine import OggOpusEncoder, PiperProcess, resolve_voice_config, sanitize_tts_text
 from ai_api.stt_engine import WhisperSTT
 import lameenc
 
@@ -40,7 +40,7 @@ async def tts(req: Request):
     app = req.app
     cfg = app.state.cfg
     body = await req.json()
-    text = body.get("input", "")
+    text = sanitize_tts_text(body.get("input", ""))
     # OpenAI-compatible fields: input, model, voice, format
     _model = body.get("model")   # accepted but not used by Piper
     _voice = body.get("voice")   # accepted but not used by Piper
